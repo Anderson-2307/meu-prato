@@ -26,14 +26,16 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 
 /* ---------- estado ---------- */
 const defaults = () => ({
-  profile: { sex: 'm', age: 30, weight: 80, height: 170, activity: 1.375, deficit: 500, kcal: 2000, p: 120, c: 200, f: 60, apiKey: '', model: 'claude-sonnet-5-5' },
+  profile: { sex: 'm', age: 30, weight: 80, height: 170, activity: 1.375, deficit: 500, kcal: 2000, p: 120, c: 200, f: 60 },
   days: {},
 });
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
     const d = defaults();
-    return { ...d, ...s, profile: { ...d.profile, ...(s && s.profile) } };
+    const p = { ...d.profile, ...(s && s.profile) };
+    delete p.apiKey; delete p.model;
+    return { ...d, ...s, profile: p };
   } catch { return defaults(); }
 }
 let S = load();
@@ -42,7 +44,7 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch
 let view = 'hoje';
 let date = iso(new Date());
 const hourMeal = () => { const h = new Date().getHours(); return h < 10 ? 'cafe' : h < 15 ? 'almoco' : h < 18 ? 'lanche' : h < 22 ? 'jantar' : 'ceia'; };
-let D = { meal: hourMeal(), text: '', grams: '', img: null, items: [], busy: false, error: '', note: '' };
+let D = { meal: hourMeal(), text: '', grams: '', items: [] };
 
 const sum = a => a.reduce((t, e) => ({ kcal: t.kcal + e.kcal, p: t.p + e.p, c: t.c + e.c, f: t.f + e.f }), { kcal: 0, p: 0, c: 0, f: 0 });
 const dayEntries = d => S.days[d] || [];
@@ -146,30 +148,18 @@ function viewAdd() {
     <div class="card">
       <h2>Refeição</h2>
       <div class="chips" style="margin-top:8px">${MEALS.map(([id, n, ico]) => `<button class="chip ${D.meal === id ? 'on' : ''}" data-act="meal" data-meal="${id}">${ico} ${n}</button>`).join('')}</div>
-      <label>Foto do prato (opcional)</label>
-      <div class="grid2">
-        <button class="btn sec" data-act="cam">📷 Câmera</button>
-        <button class="btn sec" data-act="gal">🖼️ Galeria</button>
-      </div>
-      <input id="fcam" type="file" accept="image/*" capture="environment" class="hidden">
-      <input id="fgal" type="file" accept="image/*" class="hidden">
-      ${D.img ? `<img class="photo" src="${D.img}" alt="Foto do prato"><button class="btn ghost" style="margin-top:8px;padding:10px" data-act="rmimg">Remover foto</button>` : ''}
-      <label>O que é? (opcional com foto)</label>
-      <input id="ftext" placeholder="ex: arroz parbolizado, frango grelhado" value="${esc(D.text)}">
-      <label>Peso em gramas (opcional)</label>
-      <input id="fgrams" inputmode="decimal" placeholder="ex: 100 (peso do prato todo ou do alimento)" value="${esc(D.grams)}">
-      ${D.error ? `<div class="warn">${esc(D.error)}</div>` : ''}
-      <div class="btns">
-        <button class="btn" data-act="calc" ${D.busy ? 'disabled' : ''}>${D.busy ? '<span class="spin"></span>Calculando…' : '✨ Calcular com IA'}</button>
-      </div>
-      <div class="btns"><button class="btn ghost" data-act="manual">✍️ Digitar valores manualmente</button></div>
+      <label>Alimento</label>
+      <input id="ftext" placeholder="ex: arroz parbolizado" value="${esc(D.text)}">
+      <label>Peso em gramas</label>
+      <input id="fgrams" inputmode="decimal" placeholder="ex: 100" value="${esc(D.grams)}">
+      <div class="btns"><button class="btn" data-act="manual">➕ Adicionar alimento</button></div>
     </div>
     ${rec.length ? `<div class="card"><h2>Recentes</h2><div class="chips" style="margin-top:8px">${rec.map((e, i) => `<button class="chip" data-act="recent" data-i="${i}">${esc(e.name)}${e.grams ? ' · ' + r0(e.grams) + 'g' : ''}</button>`).join('')}</div></div>` : ''}
     ${D.items.length ? `<div class="card"><h2>Resultado (ajuste se precisar)</h2>${items}
       <div class="notice"><b>${r0(dt.kcal)} kcal</b> · P ${r0(dt.p)}g · C ${r0(dt.c)}g · G ${r0(dt.f)}g<br>
       ${after >= 0 ? `Depois de salvar, ainda faltam <b>${r0(after)} kcal</b> hoje.` : `Isso passa a meta do dia em <b style="color:var(--danger)">${r0(-after)} kcal</b>.`}</div>
       <div class="btns"><button class="btn" data-act="save">Salvar em ${MEALS.find(m => m[0] === D.meal)[1]}</button></div>
-      <div class="small mut" style="margin-top:8px">Mude as gramas de um item e os valores se ajustam proporcionalmente. Estimativas por foto são aproximadas.</div>
+      <div class="small mut" style="margin-top:8px">Preencha os valores do item. Se mudar as gramas, os valores se ajustam proporcionalmente.</div>
     </div>` : ''}`;
 }
 
@@ -208,68 +198,10 @@ function viewMetas() {
     <div class="card"><h2>Minhas metas diárias</h2>
       <div class="grid2">${inp('kcal', 'Calorias (kcal)')}${inp('p', 'Proteína (g)')}${inp('c', 'Carboidrato (g)')}${inp('f', 'Gordura (g)')}</div>
     </div>
-    <div class="card"><h2>IA (estimativa por foto)</h2>
-      <label>Chave da API da Anthropic</label>
-      <input type="password" data-p="apiKey" placeholder="sk-ant-..." value="${esc(P.apiKey)}" autocomplete="off">
-      <label>Modelo</label>
-      <input data-p="model" value="${esc(P.model)}">
-      <div class="small mut" style="margin-top:8px">A chave fica salva só neste aparelho e é enviada apenas à Anthropic. Crie uma em console.anthropic.com e defina um limite de gasto baixo.</div>
-    </div>
     <div class="card"><h2>Backup</h2>
       <div class="grid2" style="margin-top:8px"><button class="btn sec" data-act="export">⬇️ Exportar</button><button class="btn sec" data-act="import">⬆️ Importar</button></div>
       <input id="fimp" type="file" accept="application/json" class="hidden">
     </div>`;
-}
-
-/* ---------- IA ---------- */
-const SYSTEM = `Você é um nutricionista que estima calorias e macronutrientes de refeições, com base na tabela brasileira TACO e na USDA.
-Responda SOMENTE com JSON válido, sem texto extra e sem markdown, neste formato:
-{"itens":[{"nome":"string em português","gramas":número,"kcal":número,"proteina":número,"carboidrato":número,"gordura":número,"observacao":"string curta ou vazio"}]}
-Regras:
-- Separe cada alimento do prato em um item.
-- Valores referem-se ao alimento já preparado/cozido como aparece, na quantidade em "gramas".
-- Se o usuário informar o peso e o texto descreve um único alimento, use exatamente esse peso. Se o peso for do prato todo, distribua entre os itens de forma coerente.
-- Se não houver peso, estime a porção pela foto (use talheres, prato e mãos como referência) e diga na observação que a porção foi estimada.
-- Considere óleo, molhos e açúcar visíveis ou prováveis no preparo.
-- Números sem unidade, com no máximo 1 casa decimal.`;
-
-async function toJpeg(file, max = 1280) {
-  const bmp = await createImageBitmap(file);
-  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.82);
-}
-
-async function estimate() {
-  const P = S.profile;
-  if (!P.apiKey) throw new Error('Cole sua chave da API na aba Metas para usar a IA.');
-  if (!D.img && !D.text.trim()) throw new Error('Envie uma foto ou descreva o alimento.');
-  const content = [];
-  if (D.img) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: D.img.split(',')[1] } });
-  const g = num(D.grams);
-  content.push({ type: 'text', text: `Refeição: ${MEALS.find(m => m[0] === D.meal)[1]}.\nDescrição: ${D.text.trim() || '(veja a foto)'}\nPeso informado: ${g > 0 ? g + ' g' : 'não informado'}.` });
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': P.apiKey.trim(),
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({ model: P.model || 'claude-sonnet-5-5', max_tokens: 1500, system: SYSTEM, messages: [{ role: 'user', content }] }),
-  });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(res.status === 401 ? 'Chave da API inválida.' : (j.error && j.error.message) || 'Erro ' + res.status);
-  const txt = (j.content || []).map(b => b.text || '').join('');
-  const m = txt.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('A IA não retornou um resultado legível. Tente de novo.');
-  const arr = JSON.parse(m[0]).itens || [];
-  if (!arr.length) throw new Error('Não identifiquei alimentos. Descreva melhor.');
-  return arr.map(i => ({
-    name: String(i.nome || 'Alimento'), grams: num(i.gramas), kcal: num(i.kcal), p: num(i.proteina), c: num(i.carboidrato), f: num(i.gordura), note: String(i.observacao || ''),
-  }));
 }
 
 /* ---------- ações ---------- */
@@ -279,12 +211,6 @@ function scaleItem(it, newGrams) {
     it.kcal *= k; it.p *= k; it.c *= k; it.f *= k;
   }
   it.grams = newGrams;
-}
-
-async function onFile(file) {
-  if (!file) return;
-  try { D.img = await toJpeg(file); D.error = ''; } catch { D.error = 'Não consegui abrir essa imagem.'; }
-  render();
 }
 
 document.addEventListener('click', async e => {
@@ -300,30 +226,20 @@ document.addEventListener('click', async e => {
     S.days[date] = dayEntries(date).filter(x => x.id !== b.dataset.id); save(); return render();
   }
   if (a === 'meal') { D.meal = b.dataset.meal; return render(); }
-  if (a === 'cam') return $('#fcam').click();
-  if (a === 'gal') return $('#fgal').click();
-  if (a === 'rmimg') { D.img = null; return render(); }
-  if (a === 'manual') { D.items.push({ name: D.text.trim() || 'Alimento', grams: num(D.grams), kcal: 0, p: 0, c: 0, f: 0, note: '' }); return render(); }
+  if (a === 'manual') { D.items.push({ name: D.text.trim() || 'Alimento', grams: num(D.grams), kcal: 0, p: 0, c: 0, f: 0, note: '' }); D.text = ''; D.grams = ''; return render(); }
   if (a === 'rm') { D.items.splice(+b.dataset.i, 1); return render(); }
   if (a === 'recent') { const e2 = recents()[+b.dataset.i]; D.items.push({ name: e2.name, grams: e2.grams, kcal: e2.kcal, p: e2.p, c: e2.c, f: e2.f, note: '' }); return render(); }
-  if (a === 'calc') {
-    D.error = ''; D.busy = true; render();
-    try { D.items = D.items.concat(await estimate()); } catch (err) { D.error = err.message || String(err); }
-    D.busy = false; render();
-    if (D.items.length && !D.error) setTimeout(() => document.querySelector('.ditem')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-    return;
-  }
   if (a === 'save') {
     const day = dayEntries(date).slice();
     D.items.forEach(it => day.push({ id: uid(), meal: D.meal, name: it.name || 'Alimento', grams: it.grams, kcal: it.kcal, p: it.p, c: it.c, f: it.f, t: Date.now() }));
     S.days[date] = day; save();
-    D = { meal: D.meal, text: '', grams: '', img: null, items: [], busy: false, error: '', note: '' };
+    D = { meal: D.meal, text: '', grams: '', items: [] };
     toast('Salvo!'); return go('hoje');
   }
   if (a === 'applygoal') { Object.assign(S.profile, (({ kcal, p, c, f }) => ({ kcal, p, c, f }))(calcGoals())); save(); toast('Metas atualizadas'); return render(); }
   if (a === 'export') {
     const url = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' }));
-    const l = document.createElement('a'); l.href = url; l.download = `meu-prato-${iso(new Date())}.json`; l.click();
+    const l = document.createElement('a'); l.href = url; l.download = `diario-de-calorias-${iso(new Date())}.json`; l.click();
     return setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
   if (a === 'import') return $('#fimp').click();
@@ -331,7 +247,6 @@ document.addEventListener('click', async e => {
 
 document.addEventListener('change', async e => {
   const t = e.target;
-  if (t.id === 'fcam' || t.id === 'fgal') return onFile(t.files[0]);
   if (t.id === 'fimp') {
     try {
       const j = JSON.parse(await t.files[0].text());
@@ -342,10 +257,10 @@ document.addEventListener('change', async e => {
     return;
   }
   if (t.dataset.p) {
-    const k = t.dataset.p, text = ['sex', 'apiKey', 'model'].includes(k);
+    const k = t.dataset.p, text = k === 'sex';
     S.profile[k] = text ? t.value.trim() : k === 'activity' ? +t.value : num(t.value);
     save();
-    if (view === 'metas' && !['apiKey', 'model', 'kcal', 'p', 'c', 'f'].includes(k)) render();
+    if (view === 'metas' && !['kcal', 'p', 'c', 'f'].includes(k)) render();
     return;
   }
   if (t.dataset.f !== undefined) {

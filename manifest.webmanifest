@@ -1,7 +1,7 @@
 {
-  "name": "Meu Prato - Calorias e Macros",
-  "short_name": "Meu Prato",
-  "description": "Controle de calorias e macronutrientes com estimativa por foto.",
+  "name": "Diário de Calorias",
+  "short_name": "Diário Cal.",
+  "description": "Controle de calorias e macronutrientes.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
